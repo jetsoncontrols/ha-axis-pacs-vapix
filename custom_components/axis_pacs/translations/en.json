@@ -1,0 +1,36 @@
+{
+  "config": {
+    "flow_title": "Axis door controller ({name})",
+    "step": {
+      "user": {
+        "title": "Connect to your Axis door controller",
+        "description": "Enter the controller's address and an administrator account. Lock actions require an Admin user.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "port": "Port (0 for default)",
+          "use_https": "Connect over HTTPS"
+        }
+      },
+      "discovery_confirm": {
+        "title": "Add Axis door controller",
+        "description": "Enter administrator credentials for the controller discovered at {host}.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "port": "Port (0 for default)",
+          "use_https": "Connect over HTTPS"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the controller.",
+      "invalid_auth": "Invalid username or password.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This controller is already configured."
+    }
+  }
+}
