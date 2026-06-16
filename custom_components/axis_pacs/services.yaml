@@ -1,0 +1,78 @@
+# Access-code (PIN/card) management services.
+# Credentials are cluster-wide on Axis controllers: config_entry_id only selects
+# which controller to route the request through, not which doors are affected.
+
+add_pin:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    name:
+      required: true
+      example: "Doe, Jane"
+      selector:
+        text:
+    pin:
+      required: true
+      example: "1234"
+      selector:
+        text:
+    access_profile_tokens:
+      example: "Axis-accc8e65809e:1527885704.522608000"
+      selector:
+        text:
+          multiple: true
+    enabled:
+      default: true
+      selector:
+        boolean:
+
+remove_credential:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    credential_token:
+      required: true
+      selector:
+        text:
+
+set_credential_enabled:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    credential_token:
+      required: true
+      selector:
+        text:
+    enabled:
+      required: true
+      selector:
+        boolean:
+
+list_credentials:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    include_pins:
+      default: false
+      selector:
+        boolean:
+
+list_access_profiles:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs

@@ -32,5 +32,100 @@
     "abort": {
       "already_configured": "This controller is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Axis door controller options",
+        "description": "Access codes (PINs/cards) are shared across the whole controller cluster. Enable management on just one controller to expose the code-management actions there.",
+        "data": {
+          "manage_codes": "Manage access codes from this controller"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_pin": {
+      "name": "Add PIN",
+      "description": "Creates a cardholder and a PIN credential on the cluster, optionally granting one or more access profiles. PINs are stored as plain digits on the controller.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through (any controller reaches the shared cluster database)."
+        },
+        "name": {
+          "name": "Cardholder name",
+          "description": "Display name for the new cardholder, e.g. \"Doe, Jane\"."
+        },
+        "pin": {
+          "name": "PIN",
+          "description": "The PIN digits for this credential."
+        },
+        "access_profile_tokens": {
+          "name": "Access profiles",
+          "description": "Tokens of the access profiles this PIN should be granted. Leave empty to create a code that opens nothing yet. Use 'List access profiles' to find tokens."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the credential is active immediately."
+        }
+      }
+    },
+    "remove_credential": {
+      "name": "Remove credential",
+      "description": "Deletes a credential (PIN/card) from the cluster by its token.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "credential_token": {
+          "name": "Credential token",
+          "description": "Token of the credential to remove."
+        }
+      }
+    },
+    "set_credential_enabled": {
+      "name": "Enable or disable credential",
+      "description": "Enables or disables an existing credential without deleting it.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "credential_token": {
+          "name": "Credential token",
+          "description": "Token of the credential to change."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Set to on to enable, off to disable."
+        }
+      }
+    },
+    "list_credentials": {
+      "name": "List credentials",
+      "description": "Returns the cluster's credentials (cardholder, enabled state, granted profiles).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "include_pins": {
+          "name": "Include PIN values",
+          "description": "Include the plain-text PIN of each credential in the response. Handle with care."
+        }
+      }
+    },
+    "list_access_profiles": {
+      "name": "List access profiles",
+      "description": "Returns the cluster's access profiles and their tokens, for use with 'Add PIN'.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        }
+      }
+    }
   }
 }

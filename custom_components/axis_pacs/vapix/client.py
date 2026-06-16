@@ -13,7 +13,17 @@ from xml.etree import ElementTree as ET
 import httpx
 
 from . import soap
-from .models import DeviceIdentity, Door, DoorState, Notification
+from .models import (
+    AccessPoint,
+    AccessProfile,
+    Credential,
+    DeviceIdentity,
+    Door,
+    DoorState,
+    Notification,
+    Schedule,
+    User,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -181,3 +191,134 @@ class AxisPacsClient:
             soap.unsubscribe(address, subscription_id),
             action=soap.ACTION_UNSUBSCRIBE,
         )
+
+    # --- access-code / credential management (cluster-wide; not per-door) ----- #
+    # Reads are safe to run anywhere. Writes mutate the *shared cluster database*
+    # — every controller in the cluster sees the result — so callers must treat
+    # them as cluster-global, not local to this controller.
+    async def async_get_users(
+        self, *, page: int = 100, max_total: int = 5000
+    ) -> list[User]:
+        """All cardholders, following pagination up to ``max_total``."""
+        users: list[User] = []
+        start: str | None = None
+        while True:
+            root = await self.async_call(soap.get_user_list(page, start))
+            chunk, start = soap.parse_user_list(root)
+            users.extend(chunk)
+            if not start or len(users) >= max_total:
+                return users
+
+    async def async_get_credentials(
+        self, *, page: int = 100, max_total: int = 5000
+    ) -> list[Credential]:
+        """All credentials (PIN/card), following pagination up to ``max_total``."""
+        creds: list[Credential] = []
+        start: str | None = None
+        while True:
+            root = await self.async_call(soap.get_credential_list(page, start))
+            chunk, start = soap.parse_credentials(root)
+            creds.extend(chunk)
+            if not start or len(creds) >= max_total:
+                return creds
+
+    async def async_get_credential(self, token: str) -> Credential | None:
+        creds, _ = soap.parse_credentials(await self.async_call(soap.get_credential(token)))
+        return creds[0] if creds else None
+
+    async def async_get_access_profiles(self) -> list[AccessProfile]:
+        return soap.parse_access_profiles(
+            await self.async_call(soap.get_access_profile_list())
+        )
+
+    async def async_get_schedules(self) -> list[Schedule]:
+        return soap.parse_schedule_info_list(
+            await self.async_call(soap.get_schedule_info_list())
+        )
+
+    async def async_get_access_points(self) -> list[AccessPoint]:
+        return soap.parse_access_point_info_list(
+            await self.async_call(soap.get_access_point_info_list())
+        )
+
+    async def async_get_access_points_for_door(self, door_token: str) -> list[AccessPoint]:
+        """Access points (reader sides) that belong to ``door_token``."""
+        return [
+            ap
+            for ap in await self.async_get_access_points()
+            if ap.door_token == door_token
+        ]
+
+    # --- writes (mutate the shared cluster DB — handle with care) ------------ #
+    async def async_set_user(
+        self,
+        *,
+        token: str = "",
+        name: str,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        description: str = "",
+    ) -> str:
+        """Create (token="") or modify a cardholder; returns the user token."""
+        root = await self.async_call(
+            soap.set_user(token, name, first_name, last_name, description)
+        )
+        return soap.parse_token(root, soap.UDB) or token
+
+    async def async_remove_user(self, token: str) -> None:
+        await self.async_call(soap.remove_user(token))
+
+    async def async_set_credential(
+        self,
+        *,
+        token: str = "",
+        user_token: str,
+        id_data: dict[str, str],
+        access_profile_tokens: list[str],
+        enabled: bool = True,
+        description: str = "",
+    ) -> str:
+        """Create (token="") or modify a credential; returns the credential token."""
+        root = await self.async_call(
+            soap.set_credential(
+                token,
+                user_token,
+                id_data,
+                access_profile_tokens,
+                enabled=enabled,
+                description=description,
+            )
+        )
+        return soap.parse_token(root, soap.PX) or token
+
+    async def async_remove_credential(self, token: str) -> None:
+        await self.async_call(soap.remove_credential(token))
+
+    async def async_set_credential_enabled(self, token: str, enabled: bool) -> None:
+        await self.async_call(soap.set_credential_enabled(token, enabled))
+
+    async def async_add_pin(
+        self,
+        *,
+        name: str,
+        pin: str,
+        access_profile_tokens: list[str],
+        first_name: str | None = None,
+        last_name: str | None = None,
+        enabled: bool = True,
+    ) -> tuple[str, str]:
+        """Create a cardholder + a PIN credential granting ``access_profile_tokens``.
+
+        Returns ``(user_token, credential_token)``. The PIN is raw ASCII digits.
+        """
+        user_token = await self.async_set_user(
+            name=name, first_name=first_name, last_name=last_name
+        )
+        credential_token = await self.async_set_credential(
+            user_token=user_token,
+            id_data={"PIN": pin},
+            access_profile_tokens=access_profile_tokens,
+            enabled=enabled,
+            description=name,
+        )
+        return user_token, credential_token

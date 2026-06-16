@@ -179,6 +179,101 @@ class DeviceIdentity:
 
 
 @dataclass(slots=True)
+class User:
+    """A cardholder — an Axis ``axudb`` user, the person a credential belongs to.
+
+    The user/credential/profile database is replicated cluster-wide on Axis
+    controllers, so users are *not* local to a single controller.
+    """
+
+    token: str
+    name: str = ""
+    first_name: str = ""
+    last_name: str = ""
+    description: str = ""
+
+
+@dataclass(slots=True)
+class Credential:
+    """An Axis access credential (``pacsaxis``): a person's PIN and/or card(s).
+
+    ``id_data`` maps identifier names (``PIN``, ``Card``, ``CardNr``) to their raw
+    values. The controller stores and returns PINs/card numbers in plain text.
+    Like :class:`User`, credentials are cluster-wide, not per-controller.
+    """
+
+    token: str
+    user_token: str = ""
+    description: str = ""
+    enabled: bool = False
+    status: str = ""
+    id_data: dict[str, str] = field(default_factory=dict)
+    access_profile_tokens: list[str] = field(default_factory=list)
+
+    @property
+    def pin(self) -> str | None:
+        return self.id_data.get("PIN") or None
+
+    @property
+    def card(self) -> str | None:
+        return self.id_data.get("Card") or self.id_data.get("CardNr") or None
+
+    @property
+    def has_pin(self) -> bool:
+        return bool(self.id_data.get("PIN"))
+
+
+@dataclass(slots=True)
+class AccessPolicy:
+    """One rule inside an :class:`AccessProfile`: a schedule at an access point."""
+
+    schedule_token: str
+    entity_token: str
+
+
+@dataclass(slots=True)
+class AccessProfile:
+    """A named set of (schedule + access point) rules a credential can reference."""
+
+    token: str
+    name: str = ""
+    description: str = ""
+    policies: list[AccessPolicy] = field(default_factory=list)
+
+    @property
+    def entity_tokens(self) -> list[str]:
+        return [p.entity_token for p in self.policies]
+
+
+@dataclass(slots=True)
+class Schedule:
+    """A time schedule (``standard_always`` is the built-in always-on schedule)."""
+
+    token: str
+    name: str = ""
+    description: str = ""
+
+
+@dataclass(slots=True)
+class AccessPoint:
+    """A reader side of a door — the entity an :class:`AccessProfile` grants at.
+
+    ``entity_token`` is the door this access point belongs to (when
+    ``entity_type`` is ``tdc:Door``), so it maps an access point back to a door.
+    """
+
+    token: str
+    name: str = ""
+    description: str = ""
+    entity_type: str = ""
+    entity_token: str = ""
+
+    @property
+    def door_token(self) -> str:
+        return self.entity_token if self.entity_type.endswith("Door") else ""
+
+
+@dataclass(slots=True)
 class Notification:
     """A single ONVIF event notification parsed from ``PullMessages``."""
 

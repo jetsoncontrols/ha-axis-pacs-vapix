@@ -7,12 +7,25 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .const import CONF_USE_HTTPS, DEFAULT_PORT, DEFAULT_USERNAME, DOMAIN
+from .const import (
+    CONF_MANAGE_CODES,
+    CONF_USE_HTTPS,
+    DEFAULT_MANAGE_CODES,
+    DEFAULT_PORT,
+    DEFAULT_USERNAME,
+    DOMAIN,
+)
 from .vapix import AxisPacsClient, CannotConnect, InvalidAuth, VapixError
 
 _LOGGER = logging.getLogger(__name__)
@@ -71,6 +84,11 @@ class AxisPacsConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     _discovered_host: str | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> AxisPacsOptionsFlow:
+        return AxisPacsOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -157,4 +175,28 @@ class AxisPacsConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_DISCOVERY_DATA_SCHEMA,
             description_placeholders={"host": self._discovered_host},
             errors=errors,
+        )
+
+
+class AxisPacsOptionsFlow(OptionsFlow):
+    """Per-instance options — currently the access-code management opt-in.
+
+    Access codes (credentials) are a *cluster-wide* database shared by every
+    controller, so this toggle designates which controller(s) expose the
+    integration's code-management services. It is off by default.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+        current = self.config_entry.options.get(
+            CONF_MANAGE_CODES, DEFAULT_MANAGE_CODES
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_MANAGE_CODES, default=current): bool}
+            ),
         )

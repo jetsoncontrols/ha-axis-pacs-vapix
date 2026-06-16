@@ -7,19 +7,29 @@ from .events import PullPointManager
 from .models import (
     LOCKED_MODES,
     UNLOCKED_MODES,
+    AccessPoint,
+    AccessPolicy,
+    AccessProfile,
+    Credential,
     DeviceIdentity,
     Door,
     DoorCapabilities,
     DoorMode,
     DoorState,
     Notification,
+    Schedule,
+    User,
 )
 
 __all__ = [
     "LOCKED_MODES",
     "UNLOCKED_MODES",
+    "AccessPoint",
+    "AccessPolicy",
+    "AccessProfile",
     "AxisPacsClient",
     "CannotConnect",
+    "Credential",
     "DeviceIdentity",
     "Door",
     "DoorCapabilities",
@@ -28,5 +38,7 @@ __all__ = [
     "InvalidAuth",
     "Notification",
     "PullPointManager",
+    "Schedule",
+    "User",
     "VapixError",
 ]

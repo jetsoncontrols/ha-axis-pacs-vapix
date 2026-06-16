@@ -19,14 +19,24 @@ HACS-compatible Home Assistant custom integration for Axis VAPIX access controll
 - `custom_components/axis_pacs/vapix/` — **self-contained async client with no Home Assistant imports** (so it runs standalone). httpx + `DigestAuth`, stdlib XML. `soap.py` (SOAP/ONVIF builders + parsers, matched by namespace URI not prefix), `client.py` (door control + event primitives), `events.py` (`PullPointManager` loop with renew + self-healing resubscribe), `models.py` (`DoorMode`, `Door`, `DoorState`, `Notification`). **Keep this package HA-free.**
 - `coordinator.py` — push `DataUpdateCoordinator[dict[token, DoorState]]`; seeds via `GetDoorState`, applies live `DoorMode` events, optimistic `set_door_mode` after commands.
 - `lock.py` — one `LockEntity` per local door. lock→`LockDoor`, unlock→`UnlockDoor` (permanent), open→`AccessDoor` (momentary, via `LockEntityFeature.OPEN`).
-- `config_flow.py` — host/username/password/port/https; `unique_id` = serial.
+- `config_flow.py` — host/username/password/port/https; `unique_id` = serial. **Options flow** exposes a per-instance `manage_codes` toggle (default off) — the opt-in that designates which controller(s) expose the cluster-wide code services.
+- `services.py` — integration-level **access-code** services (`add_pin`, `remove_credential`, `set_credential_enabled`, `list_credentials`, `list_access_profiles`). Registered once in `async_setup`. Each takes a `config_entry_id` to route through a controller, but acts on the **cluster-wide** credential DB (see below); the resolver rejects entries that don't have `manage_codes` enabled. `services.yaml` + `strings.json`/`translations/en.json` provide UI metadata.
+
+## Access-code management (credentials / PINs / cards)
+
+- **Cluster-global, unlike doors:** the credential / cardholder / access-profile / schedule database is replicated across the whole A1001 cluster. `GetUserList`/`GetCredentialList` return *all* of them regardless of which node is queried, while doors/access-points are owned per-controller. So lock entities are local but access codes are cluster-wide — hence domain services, not per-door entity services.
+- **Native Axis path (not vanilla ONVIF):** cardholders via `axudb` (`SetUser`/`GetUserList`/`RemoveUser`), credentials via `pacsaxis` (`SetCredential`/`GetCredential(List)`/`RemoveCredential`/`Enable`/`Disable`). PINs are **raw ASCII** (`IdData Name="PIN" Value="1234"`) — the hex/base64 encoding only applies to the unused ONVIF `tcr` path. Access *rules* are ONVIF: profiles (`tar`), schedules (`tsc`), access points (`tac`).
+- **A working PIN** = `SetUser` (holder) → `SetCredential` with a PIN `IdData` + a `CredentialAccessProfile/AccessProfile` pointing at an existing profile that grants the door. v1 reuses existing profiles; it does not create them.
+- **`SetCredential` gotcha:** `<Status>` is required, in schema order `UserToken, Description, Enabled, Status, IdData*, CredentialAccessProfile*`; omitting it → `ter:InvalidArgs` "occurrence violation in element Credential". A zero-profile credential is valid (grants nothing).
 
 ## Commands
 
 - **Standalone client smoke-test** against a real controller (no HA needed):
   `pip install httpx && AXIS_HOST=10.1.4.12 AXIS_USER=root AXIS_PASS=… python3 scripts/devcheck.py`
   (add `--open` to momentarily `AccessDoor` the first local door and confirm eventing).
-- **Raw read-only protocol probing:** `tools/probe.sh <ip> <user> <pass>`.
+- **Access-code read-only verification** (lists users/credentials/profiles/schedules/access-points + door→profile map; masks PINs): `AXIS_HOST=… AXIS_USER=… AXIS_PASS=… python3 scripts/devcheck_credentials.py`.
+- **Reversible credential write test** (creates a throwaway disabled PIN, verifies round-trip, deletes it — the only writing script; safe against production): `AXIS_HOST=… AXIS_USER=… AXIS_PASS=… AXIS_PROFILE=<profile-token> python3 scripts/devcheck_write_test.py`.
+- **Raw read-only protocol probing:** `tools/probe.sh <ip> <user> <pass>` (door control); `tools/probe-credentials.sh <ip> <user> <pass>` (credential/access-management stack).
 - **Syntax check** (HA not installed): `python3 -m py_compile custom_components/axis_pacs/**/*.py`.
 - **HA tests** (when set up): `pytest` with `pytest-homeassistant-custom-component`.
 
