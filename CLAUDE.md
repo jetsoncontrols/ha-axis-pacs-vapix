@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-HACS-compatible Home Assistant custom integration for Axis VAPIX access controllers (A1001, A1601, A1610/A1210 on the VAPIX-OS firmware track). v0.1 exposes each door **local to the connected controller** as a `lock` entity, with live state from the controller's event stream (no polling). Integration domain: `axis_pacs`. One instance per physically-connected controller; A1001 clustering is intentionally not used.
+HACS-compatible Home Assistant custom integration for Axis VAPIX access controllers (A1001, A1601, A1610/A1210 on the VAPIX-OS firmware track). Integration domain: `axis_pacs`. One config entry per physically-connected controller. Two capabilities:
+
+- **Door control (v0.1):** each door **local to the connected controller** is a `lock` entity, with live state from the controller's event stream (no polling).
+- **Access-code management (v0.2):** create/list/remove PIN & card credentials via integration services, opted-in per controller (see below).
+
+Doors are filtered to the local controller, but the **credential database is shared cluster-wide** — so unlike door control, access-code management is inherently a cluster-wide concern (it is not "one controller in isolation").
 
 ## Validated device facts (test unit: A1001, fw 1.65.6, 10.1.4.12)
 
@@ -13,6 +18,7 @@ HACS-compatible Home Assistant custom integration for Axis VAPIX access controll
 - **Cluster filtering:** `GetDoorInfoList` returns *all* cluster doors; expose only local ones — a door is local when its token MAC (`Axis-<mac>:<id>`) equals the device serial. Peer doors return an empty `<Capabilities/>`.
 - **Events:** ONVIF WS-Eventing **PullPoint** (`CreatePullPointSubscription` → `PullMessages` long-poll) on `/vapix/services`. No JSON `ws-data-stream` / `apidiscovery.cgi` on this firmware (both 404). Door topic `tns1:Door/State/DoorMode`, source key `DoorToken`.
 - **Identity** via `GET /axis-cgi/param.cgi?action=list&group=Brand,Properties` (serial == MAC without colons).
+- **Access-code stack validated separately:** the full credential/accessrules/schedule/accesscontrol stack was confirmed read **and** write (reversibly) against a live production A1001 cluster on the same firmware — details in *Access-code management* below.
 
 ## Architecture
 
@@ -42,7 +48,8 @@ HACS-compatible Home Assistant custom integration for Axis VAPIX access controll
 
 ## Conventions / gotchas
 
-- Door commands (lock/unlock/access) require an **Admin** account.
+- Door commands (lock/unlock/access) **and** access-code management require an **Admin** account.
+- Access codes are **cluster-wide**: enabling `manage_codes` on a controller exposes the *shared* credential DB, and `GetCredentialList`/`GetUserList` return the whole cluster's records (not just this node's). Treat returned PINs as PII.
 - Parse SOAP by **namespace URI**, not prefix — prefixes vary across responses.
 - PullPoint filter expressions use `onvif:`/`axis:` prefixes; notifications come back as `tns1:`/`tnsaxis:`.
 - A1001-only WSDLs (`connection_axis`, `thirdpartycredential`) are deliberately unused.
