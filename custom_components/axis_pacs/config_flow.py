@@ -19,8 +19,10 @@ from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
+    CONF_MANAGE_ALLOW_NON_ADMIN,
     CONF_MANAGE_CODES,
     CONF_USE_HTTPS,
+    DEFAULT_MANAGE_ALLOW_NON_ADMIN,
     DEFAULT_MANAGE_CODES,
     DEFAULT_PORT,
     DEFAULT_USERNAME,
@@ -191,12 +193,22 @@ class AxisPacsOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
-        current = self.config_entry.options.get(
-            CONF_MANAGE_CODES, DEFAULT_MANAGE_CODES
-        )
+        opts = self.config_entry.options
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
-                {vol.Required(CONF_MANAGE_CODES, default=current): bool}
+                {
+                    vol.Required(
+                        CONF_MANAGE_CODES,
+                        default=opts.get(CONF_MANAGE_CODES, DEFAULT_MANAGE_CODES),
+                    ): bool,
+                    vol.Required(
+                        CONF_MANAGE_ALLOW_NON_ADMIN,
+                        default=opts.get(
+                            CONF_MANAGE_ALLOW_NON_ADMIN,
+                            DEFAULT_MANAGE_ALLOW_NON_ADMIN,
+                        ),
+                    ): bool,
+                }
             ),
         )

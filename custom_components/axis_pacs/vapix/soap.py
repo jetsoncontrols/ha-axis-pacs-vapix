@@ -26,6 +26,7 @@ from .models import (
     DoorState,
     Notification,
     Schedule,
+    TcrCredential,
     User,
 )
 
@@ -47,6 +48,11 @@ UDB = "http://www.axis.com/vapix/ws/user"  # Axis user DB: cardholders
 TAR = "http://www.onvif.org/ver10/accessrules/wsdl"  # access profiles
 TSC = "http://www.onvif.org/ver10/schedule/wsdl"  # schedules
 TAC = "http://www.onvif.org/ver10/accesscontrol/wsdl"  # access points
+# ONVIF Credential service — same credential DB as ``PX`` (identical tokens) but
+# the only view carrying the validity window (ValidFrom/ValidTo). PT supplies the
+# identifier-type QNames (pt:PIN / pt:Card) used inside CredentialIdentifier.
+TCR = "http://www.onvif.org/ver10/credential/wsdl"
+PT = "http://www.onvif.org/ver10/pacs"
 
 # --- WS-Addressing actions ---
 ACTION_CREATE_PULLPOINT = f"{TEV}/EventPortType/CreatePullPointSubscriptionRequest"
@@ -348,9 +354,93 @@ def remove_credential(token: str) -> str:
     )
 
 
+def create_access_profile(
+    name: str, policies: list[tuple[str, str]], description: str = ""
+) -> str:
+    """Create an access profile (group). ``policies`` = list of (schedule, entity).
+
+    Element order matters (Name, Description, AccessPolicy*) and the ``token``
+    attribute is required even when empty, or the device rejects with
+    ``ter:InvalidArgs`` / ``ter:MissingAttr``. AccessPolicy carries no EntityType.
+    """
+    pol = "".join(
+        f"<AccessPolicy><ScheduleToken>{escape(s)}</ScheduleToken>"
+        f"<Entity>{escape(e)}</Entity></AccessPolicy>"
+        for s, e in policies
+    )
+    body = (
+        f'<CreateAccessProfile xmlns="{TAR}"><AccessProfile token="">'
+        f"<Name>{escape(name)}</Name><Description>{escape(description)}</Description>"
+        f"{pol}</AccessProfile></CreateAccessProfile>"
+    )
+    return _envelope(body)
+
+
+def delete_access_profile(token: str) -> str:
+    return _envelope(
+        f'<DeleteAccessProfile xmlns="{TAR}"><Token>{escape(token)}</Token></DeleteAccessProfile>'
+    )
+
+
 def set_credential_enabled(token: str, enabled: bool) -> str:
     op = "EnableCredential" if enabled else "DisableCredential"
     return _envelope(f'<{op} xmlns="{PX}"><Token>{escape(token)}</Token></{op}>')
+
+
+# --- ONVIF tcr: credential validity window (ValidFrom/ValidTo) --- #
+def get_tcr_credentials(token: str) -> str:
+    """``tcr:GetCredentials`` for one token (full record, incl. validity)."""
+    return _envelope(
+        f'<GetCredentials xmlns="{TCR}"><Token>{escape(token)}</Token></GetCredentials>'
+    )
+
+
+def get_tcr_credential_list(limit: int = 100, start: str | None = None) -> str:
+    """``tcr:GetCredentialList`` — read validity windows in bulk."""
+    s = f"<StartReference>{escape(start)}</StartReference>" if start else ""
+    return _envelope(
+        f'<GetCredentialList xmlns="{TCR}"><Limit>{int(limit)}</Limit>{s}'
+        "</GetCredentialList>"
+    )
+
+
+def modify_tcr_credential(
+    cred: TcrCredential, valid_from: str | None, valid_to: str | None
+) -> str:
+    """``tcr:ModifyCredential`` preserving the record, setting the validity window.
+
+    Element order per the tcr schema: Description, CredentialHolderReference,
+    ValidFrom, ValidTo, CredentialIdentifier*, CredentialAccessProfile*. Explicit
+    ``tcr:``/``pt:`` prefixes so the ``pt:*`` identifier-type QNames resolve.
+    Empty ``valid_from``/``valid_to`` clears that bound.
+    """
+    ids = "".join(
+        "<tcr:CredentialIdentifier>"
+        f"<tcr:Type><tcr:Name>{escape(i.get('type', ''))}</tcr:Name>"
+        f"<tcr:FormatType>{escape(i.get('format', ''))}</tcr:FormatType></tcr:Type>"
+        f"<tcr:ExemptedFromAuthentication>{escape(i.get('exempted', 'false'))}"
+        "</tcr:ExemptedFromAuthentication>"
+        f"<tcr:Value>{escape(i.get('value', ''))}</tcr:Value>"
+        "</tcr:CredentialIdentifier>"
+        for i in cred.identifiers
+    )
+    profiles = "".join(
+        f"<tcr:CredentialAccessProfile><tcr:AccessProfileToken>{escape(t)}"
+        "</tcr:AccessProfileToken></tcr:CredentialAccessProfile>"
+        for t in cred.access_profile_tokens
+    )
+    vf = f"<tcr:ValidFrom>{escape(valid_from)}</tcr:ValidFrom>" if valid_from else ""
+    vt = f"<tcr:ValidTo>{escape(valid_to)}</tcr:ValidTo>" if valid_to else ""
+    body = (
+        f'<tcr:ModifyCredential xmlns:tcr="{TCR}" xmlns:pt="{PT}">'
+        f'<tcr:Credential token="{escape(cred.token)}">'
+        f"<tcr:Description>{escape(cred.description)}</tcr:Description>"
+        f"<tcr:CredentialHolderReference>{escape(cred.holder)}"
+        "</tcr:CredentialHolderReference>"
+        f"{vf}{vt}{ids}{profiles}"
+        "</tcr:Credential></tcr:ModifyCredential>"
+    )
+    return _envelope(body)
 
 
 # --- parsing --- #
@@ -406,6 +496,45 @@ def parse_credentials(root: ET.Element) -> tuple[list[Credential], str | None]:
         )
     nxt = root.find(f".//{{{PX}}}NextStartReference")
     return creds, (nxt.text.strip() if nxt is not None and nxt.text else None)
+
+
+def parse_tcr_credentials(root: ET.Element) -> tuple[list[TcrCredential], str | None]:
+    """Parse ``tcr:GetCredential(List)`` into TcrCredentials + a next-page ref.
+
+    The ONVIF ``tcr`` view is the only one carrying ValidFrom/ValidTo; the
+    identifiers are echoed verbatim so a ModifyCredential preserves PIN/card.
+    """
+    out: list[TcrCredential] = []
+    for c in root.iter(f"{{{TCR}}}Credential"):
+        ids: list[dict[str, str]] = []
+        for ci in c.findall(f"{{{TCR}}}CredentialIdentifier"):
+            typ = ci.find(f"{{{TCR}}}Type")
+            ids.append(
+                {
+                    "type": _text(typ, "Name", TCR) if typ is not None else "",
+                    "format": _text(typ, "FormatType", TCR) if typ is not None else "",
+                    "exempted": _text(ci, "ExemptedFromAuthentication", TCR) or "false",
+                    "value": _text(ci, "Value", TCR),
+                }
+            )
+        profiles = [
+            t.text.strip()
+            for cap in c.findall(f"{{{TCR}}}CredentialAccessProfile")
+            if (t := cap.find(f"{{{TCR}}}AccessProfileToken")) is not None and t.text
+        ]
+        out.append(
+            TcrCredential(
+                token=c.get("token", ""),
+                description=_text(c, "Description", TCR),
+                holder=_text(c, "CredentialHolderReference", TCR),
+                valid_from=_text(c, "ValidFrom", TCR) or None,
+                valid_to=_text(c, "ValidTo", TCR) or None,
+                identifiers=ids,
+                access_profile_tokens=profiles,
+            )
+        )
+    nxt = root.find(f".//{{{TCR}}}NextStartReference")
+    return out, (nxt.text.strip() if nxt is not None and nxt.text else None)
 
 
 def parse_access_profiles(root: ET.Element) -> list[AccessProfile]:

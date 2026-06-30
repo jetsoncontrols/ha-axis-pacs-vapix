@@ -29,6 +29,83 @@ add_pin:
       selector:
         boolean:
 
+add_credential:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    name:
+      required: true
+      example: "Doe, Jane"
+      selector:
+        text:
+    kind:
+      required: true
+      selector:
+        select:
+          options:
+            - label: PIN
+              value: pin
+            - label: Card
+              value: card
+    code:
+      required: true
+      example: "1234"
+      selector:
+        text:
+    access_profile_tokens:
+      example: "Axis-accc8e65809e:1527885704.522608000"
+      selector:
+        text:
+          multiple: true
+    enabled:
+      default: true
+      selector:
+        boolean:
+    valid_from:
+      example: "2026-08-10"
+      selector:
+        date:
+    valid_to:
+      example: "2026-08-14"
+      selector:
+        date:
+    expire_action:
+      default: disable
+      selector:
+        select:
+          options:
+            - label: Disable when expired
+              value: disable
+            - label: Delete when expired
+              value: delete
+
+generate_code:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    kind:
+      required: true
+      selector:
+        select:
+          options:
+            - label: PIN
+              value: pin
+            - label: Card
+              value: card
+    length:
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 32
+          mode: box
+
 remove_credential:
   fields:
     config_entry_id:
@@ -76,3 +153,163 @@ list_access_profiles:
       selector:
         config_entry:
           integration: axis_pacs
+
+list_users:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+
+list_doors:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+
+list_schedules:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+
+ensure_door_profile:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    door_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411875.218443000"
+      selector:
+        text:
+    schedule_token:
+      default: standard_always
+      example: standard_always
+      selector:
+        text:
+
+set_user:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    user_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411918.562713000"
+      selector:
+        text:
+    name:
+      required: true
+      example: "Doe, Jane"
+      selector:
+        text:
+    first_name:
+      example: "Jane"
+      selector:
+        text:
+    last_name:
+      example: "Doe"
+      selector:
+        text:
+    description:
+      selector:
+        text:
+
+remove_user:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    user_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411918.562713000"
+      selector:
+        text:
+
+set_credential_access_profiles:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    credential_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411985.355018000"
+      selector:
+        text:
+    access_profile_tokens:
+      required: true
+      example: "Axis-accc8e74fa3d:1744412001.558011000"
+      selector:
+        text:
+          multiple: true
+
+set_credential_code:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    credential_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411985.355018000"
+      selector:
+        text:
+    kind:
+      required: true
+      selector:
+        select:
+          options:
+            - label: PIN
+              value: pin
+            - label: Card
+              value: card
+    code:
+      required: true
+      example: "1234"
+      selector:
+        text:
+
+set_credential_validity:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: axis_pacs
+    credential_token:
+      required: true
+      example: "Axis-accc8e74fa3d:1744411985.355018000"
+      selector:
+        text:
+    valid_from:
+      example: "2026-08-10"
+      selector:
+        date:
+    valid_to:
+      example: "2026-08-14"
+      selector:
+        date:
+    expire_action:
+      default: disable
+      selector:
+        select:
+          options:
+            - label: Disable when expired
+              value: disable
+            - label: Delete when expired
+              value: delete

@@ -224,6 +224,28 @@ class Credential:
 
 
 @dataclass(slots=True)
+class TcrCredential:
+    """A credential as seen through the ONVIF ``tcr`` service (same DB as
+    :class:`Credential`, identical tokens) — the only view that carries the
+    validity window. ``identifiers`` echoes the device's CredentialIdentifier
+    list verbatim so a ModifyCredential can preserve PIN/card exactly.
+
+    ``valid_from``/``valid_to`` are ISO-8601 strings (date-only is honoured;
+    ``ValiditySupportsTimeValue=false``); empty/None means unbounded that end.
+    """
+
+    token: str
+    description: str = ""
+    holder: str = ""
+    valid_from: str | None = None
+    valid_to: str | None = None
+    # Each: {"type": "pt:PIN"|"pt:Card", "format": "...", "exempted": "false",
+    #        "value": "1234"} — preserved as-is on modify.
+    identifiers: list[dict[str, str]] = field(default_factory=list)
+    access_profile_tokens: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class AccessPolicy:
     """One rule inside an :class:`AccessProfile`: a schedule at an access point."""
 

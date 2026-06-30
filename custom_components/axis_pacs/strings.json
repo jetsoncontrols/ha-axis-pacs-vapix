@@ -39,7 +39,8 @@
         "title": "Axis door controller options",
         "description": "Access codes (PINs/cards) are shared across the whole controller cluster. Enable management on just one controller to expose the code-management actions there.",
         "data": {
-          "manage_codes": "Manage access codes from this controller"
+          "manage_codes": "Manage access codes from this controller",
+          "manage_allow_non_admin": "Allow non-admins to manage codes (e.g. property managers; use the dashboard card's visibility to limit who sees it)"
         }
       }
     }
@@ -68,6 +69,66 @@
         "enabled": {
           "name": "Enabled",
           "description": "Whether the credential is active immediately."
+        }
+      }
+    },
+    "add_credential": {
+      "name": "Add credential",
+      "description": "Creates a cardholder and a credential (PIN or card) on the cluster, optionally granting access profiles.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through (any controller reaches the shared cluster database)."
+        },
+        "name": {
+          "name": "Cardholder name",
+          "description": "Display name for the new cardholder, e.g. \"Doe, Jane\"."
+        },
+        "kind": {
+          "name": "Credential type",
+          "description": "Whether this is a PIN or a card credential."
+        },
+        "code": {
+          "name": "Code",
+          "description": "The PIN digits or the card number, depending on the credential type."
+        },
+        "access_profile_tokens": {
+          "name": "Access profiles",
+          "description": "Tokens of the access profiles this credential should grant. Leave empty for none. Use 'List access profiles' to find tokens."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the credential is active immediately."
+        },
+        "valid_from": {
+          "name": "Start date",
+          "description": "Optional date the credential becomes valid (date only). Empty = valid immediately."
+        },
+        "valid_to": {
+          "name": "End date",
+          "description": "Optional last day the credential is valid (date only, inclusive). The controller denies it afterwards; empty = no expiry."
+        },
+        "expire_action": {
+          "name": "When expired",
+          "description": "What the daily reaper does after the end date: disable (keeps the code reserved so it isn't re-issued) or delete the credential."
+        }
+      }
+    },
+    "generate_code": {
+      "name": "Generate code",
+      "description": "Generates a random, unique numeric code for a credential type. Length defaults to the convention used by existing codes (5 digits at this site).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "kind": {
+          "name": "Credential type",
+          "description": "Whether to size the code as a PIN or a card number."
+        },
+        "length": {
+          "name": "Length",
+          "description": "Optional digit count. Defaults to the most common length among existing codes."
         }
       }
     },
@@ -105,25 +166,183 @@
     },
     "list_credentials": {
       "name": "List credentials",
-      "description": "Returns the cluster's credentials (cardholder, enabled state, granted profiles).",
+      "description": "Returns the cluster's credentials: cardholder name, kind (PIN/card), enabled state and granted profiles. Codes are included only when 'Include code values' is on.",
       "fields": {
         "config_entry_id": {
           "name": "Controller",
           "description": "Controller to route the request through."
         },
         "include_pins": {
-          "name": "Include PIN values",
-          "description": "Include the plain-text PIN of each credential in the response. Handle with care."
+          "name": "Include code values",
+          "description": "Include the plain-text PIN and card number of each credential in the response. Handle with care."
         }
       }
     },
     "list_access_profiles": {
       "name": "List access profiles",
-      "description": "Returns the cluster's access profiles and their tokens, for use with 'Add PIN'.",
+      "description": "Returns the cluster's access profiles, their tokens and the doors each grants, for use with 'Add PIN' and 'Set credential access profiles'.",
       "fields": {
         "config_entry_id": {
           "name": "Controller",
           "description": "Controller to route the request through."
+        }
+      }
+    },
+    "list_users": {
+      "name": "List cardholders",
+      "description": "Returns the cluster's cardholders (users) and their tokens.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        }
+      }
+    },
+    "list_doors": {
+      "name": "List doors",
+      "description": "Returns the cluster's doors and their tokens.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        }
+      }
+    },
+    "list_schedules": {
+      "name": "List schedules",
+      "description": "Returns the cluster's schedules (e.g. Always, Office hours) and their tokens.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        }
+      }
+    },
+    "ensure_door_profile": {
+      "name": "Ensure door access profile",
+      "description": "Finds or creates a one-door access profile granting a single door on a schedule (default Always / 24-7), so a credential can be granted an individual door. Returns the profile token.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "door_token": {
+          "name": "Door",
+          "description": "Token of the door to grant. Use 'List doors' to find it."
+        },
+        "schedule_token": {
+          "name": "Schedule",
+          "description": "Token of the schedule (default 'standard_always' = 24/7). Use 'List schedules' to find others."
+        }
+      }
+    },
+    "set_user": {
+      "name": "Set cardholder",
+      "description": "Renames or updates a cardholder (e.g. to label a previously blank one).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "user_token": {
+          "name": "Cardholder token",
+          "description": "Token of the cardholder to update. Use 'List credentials' or 'List cardholders' to find it."
+        },
+        "name": {
+          "name": "Cardholder name",
+          "description": "Display name, e.g. \"Doe, Jane\"."
+        },
+        "first_name": {
+          "name": "First name",
+          "description": "Optional first name."
+        },
+        "last_name": {
+          "name": "Last name",
+          "description": "Optional last name."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Optional free-text note."
+        }
+      }
+    },
+    "remove_user": {
+      "name": "Remove cardholder",
+      "description": "Deletes a cardholder (user) from the cluster by its token. Remove the cardholder's credentials first.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "user_token": {
+          "name": "Cardholder token",
+          "description": "Token of the cardholder to remove."
+        }
+      }
+    },
+    "set_credential_access_profiles": {
+      "name": "Set credential access profiles",
+      "description": "Replaces which access profiles (doors) an existing credential grants, preserving its holder and code.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "credential_token": {
+          "name": "Credential token",
+          "description": "Token of the credential to change."
+        },
+        "access_profile_tokens": {
+          "name": "Access profiles",
+          "description": "Tokens of the access profiles the credential should grant. Use 'List access profiles' to find tokens."
+        }
+      }
+    },
+    "set_credential_code": {
+      "name": "Set credential code",
+      "description": "Changes an existing credential's PIN or card number, preserving its holder, access profiles and enabled state.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "credential_token": {
+          "name": "Credential token",
+          "description": "Token of the credential to change."
+        },
+        "kind": {
+          "name": "Credential type",
+          "description": "Whether the new code is a PIN or a card number."
+        },
+        "code": {
+          "name": "Code",
+          "description": "The new PIN digits or card number."
+        }
+      }
+    },
+    "set_credential_validity": {
+      "name": "Set credential validity",
+      "description": "Sets or clears a credential's start/end dates (the controller enforces the window itself, date only) and what happens once it expires.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "Controller to route the request through."
+        },
+        "credential_token": {
+          "name": "Credential token",
+          "description": "Token of the credential to change."
+        },
+        "valid_from": {
+          "name": "Start date",
+          "description": "Optional date the credential becomes valid (date only). Empty = valid immediately."
+        },
+        "valid_to": {
+          "name": "End date",
+          "description": "Optional last day the credential is valid (date only, inclusive). The controller denies it afterwards; empty = no expiry."
+        },
+        "expire_action": {
+          "name": "When expired",
+          "description": "What the daily reaper does after the end date: disable (keeps the code reserved so it isn't re-issued) or delete the credential."
         }
       }
     }

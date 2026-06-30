@@ -3,6 +3,7 @@
   "name": "Axis PACS Door Controllers",
   "codeowners": ["@jetsoncontrols"],
   "config_flow": true,
+  "dependencies": ["http", "frontend", "websocket_api"],
   "dhcp": [
     { "hostname": "axis-*", "macaddress": "00408C*" },
     { "hostname": "axis-*", "macaddress": "ACCC8E*" },
@@ -14,6 +15,6 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/jetsoncontrols/ha-axis-pacs-vapix/issues",
   "requirements": [],
-  "version": "0.2.1",
+  "version": "0.4.0",
   "zeroconf": ["_axis-video._tcp.local."]
 }

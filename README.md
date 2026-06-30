@@ -3,7 +3,9 @@
 Home Assistant integration for Axis VAPIX access controllers (A1001, A1601,
 A1610/A1210 on the VAPIX-OS track).
 
-## What it does (v0.1)
+## What it does
+
+### Door locks (v0.1)
 
 Exposes each door **local to the connected controller** as a Home Assistant
 `lock` entity, with **live** state driven by the controller's event stream (no
@@ -18,6 +20,28 @@ polling):
 One integration instance per physically-connected controller. When controllers
 are clustered, only the **local** controller's doors are shown — peer doors
 (identified by the token's MAC vs. the device serial) are filtered out.
+
+### Access-code management card (v0.3+)
+
+A bundled Lovelace card (`custom:axis-pacs-codes-card`) — auto-registered by the
+integration, no separate HACS frontend entry or `www/` drop — manages the
+**cluster-wide** cardholder / PIN / card database that the controllers share:
+
+- List, add, edit, enable/disable and delete cardholders and their PIN/card
+  credentials, with a generate-a-unique-code button.
+- Assign access by **groups** (ONVIF access profiles) and/or **individual
+  doors** (find-or-created one-door profiles, with a schedule).
+- **Last-used** column, seeded from the controller's event log and kept live.
+- Enable the card on one controller via its **Configure → Manage access codes**
+  option; a per-controller **Allow non-admins** toggle opens it to logged-in
+  non-admins (e.g. property managers) while keeping them off HA admin.
+
+### Validity windows + expiry (v0.4)
+
+Per-credential **start / end dates** (the controller enforces the window itself,
+**date only**), plus a daily reaper that, once the end date passes, either
+**disables** the credential (keeps the code reserved so it isn't re-issued) or
+**deletes** it — your choice per credential.
 
 ## Requirements
 
