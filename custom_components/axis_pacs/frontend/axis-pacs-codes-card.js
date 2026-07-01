@@ -909,14 +909,22 @@ AxisPacsCodesCard.styles = `
   .sw input:disabled + .slider { opacity: .5; cursor: default; }
 `;
 
-customElements.define("axis-pacs-codes-card", AxisPacsCodesCard);
+// Idempotent registration. The card is delivered BOTH as an add_extra_js_url
+// module AND (v0.4.1+) as a Lovelace resource so it loads before dashboards
+// render (fixing a cold-load "Configuration error" race). Matching URLs let the
+// browser dedupe to a single module load, but guard anyway so a stray second
+// load (e.g. a stale hand-added resource with a different query) can't throw
+// "already defined" and leave the card broken.
+if (!customElements.get("axis-pacs-codes-card")) {
+  customElements.define("axis-pacs-codes-card", AxisPacsCodesCard);
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "axis-pacs-codes-card",
-  name: "Axis PACS Access Codes",
-  description: "Manage Axis PACS cardholders, PINs and cards.",
-});
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "axis-pacs-codes-card",
+    name: "Axis PACS Access Codes",
+    description: "Manage Axis PACS cardholders, PINs and cards.",
+  });
+}
 
 // eslint-disable-next-line no-console
 console.info("%c axis-pacs-codes-card %c loaded ", "background:#222;color:#7cf", "");
