@@ -105,12 +105,19 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     dest_dir = Path(hass.config.path("www")) / DOMAIN
     version = await hass.async_add_executor_job(_deploy_card, src, dest_dir)
     base_url = f"/local/{DOMAIN}/{FRONTEND_CARD_FILENAME}"
-    card_url = f"{base_url}?v={version}"
-    # Load it two ways for robustness: add_extra_js_url (works on any lovelace
-    # mode) + an auto-managed Lovelace resource (reconciled below). Same URL, so
-    # the browser dedupes to a single module load.
-    add_extra_js_url(hass, card_url)
-    await _async_register_card_resource(hass, card_url, base_url)
+    # Load it two ways for robustness: add_extra_js_url (works in any lovelace
+    # mode) + an auto-managed Lovelace resource. Their URLs MUST DIFFER (?v= vs
+    # ?res=) — do NOT point both at the identical URL. Loading the SAME module URL
+    # via both import() (extra_js_url) and a <script type=module> (resource) trips
+    # a module-map collision in Safari: the module runs but customElements.define
+    # never registers, so the card shows a permanent "Configuration error" (Chrome
+    # tolerates it; verified on SI2 — same-URL failed, distinct-URL loaded 1st try
+    # every time). Distinct queries = two independent module records; the card's
+    # customElements.define is idempotent-guarded so the second load is a no-op.
+    # (browser_mod does the same — ?<ver> for extra_js_url vs ?automatically-added
+    # &<ver> for its resource. 0.4.1's "same URL to dedupe" was the actual bug.)
+    add_extra_js_url(hass, f"{base_url}?v={version}")
+    await _async_register_card_resource(hass, f"{base_url}?res={version}", base_url)
 
 
 def _deploy_card(src: Path, dest_dir: Path) -> str:
