@@ -92,8 +92,16 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     Loading is idempotent across reloads.
     """
     frontend_dir = Path(__file__).parent / FRONTEND_DIR
+    # cache_headers=True is REQUIRED, not cosmetic. With it False the card JS is
+    # served WITHOUT Cache-Control, and Safari over the Nabu Casa tunnel stalls /
+    # deprioritizes the non-cacheable module request on page load — the module
+    # never executes, the element never registers, and the card shows a permanent
+    # "Configuration error" until a full page reload. Every card that loads
+    # reliably (HACS /hacsfiles/*, browser_mod /browser_mod.js) is served WITH
+    # cache headers; this one was the lone exception. The ?v=<hash> query still
+    # busts the cache on updates, so True is safe. (Matches browser_mod.)
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_dir), False)]
+        [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_dir), True)]
     )
     # Cache-bust with a content hash so a card update is always a fresh URL for
     # the BROWSER's HTTP cache. (HA's service worker does NOT cache this path, so
