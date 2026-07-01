@@ -11,7 +11,6 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
@@ -35,7 +34,6 @@ from .const import (
     EXPIRE_ACTIONS_STORAGE_VERSION,
     FRONTEND_CARD_FILENAME,
     FRONTEND_DIR,
-    FRONTEND_URL_BASE,
     LAST_USED_STORAGE_KEY,
     LAST_USED_STORAGE_VERSION,
     PLATFORMS,
@@ -84,47 +82,55 @@ async def _async_load_expire_actions(hass: HomeAssistant) -> None:
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
-    """Serve the bundled management card and auto-load it (extra JS + resource).
+    """Deploy the bundled management card to ``www/`` and load it from ``/local/``.
 
-    Ships the custom Lovelace card inside the integration (the full browser_mod
-    pattern), so installing the integration is enough — no HACS frontend entry
-    and no www/ drop. The Lovelace resource is auto-managed (not hand-added).
-    Loading is idempotent across reloads.
+    The card MUST be served from a path Home Assistant's service worker caches
+    (``api | static | auth | frontend_latest | frontend_es5 | local``). A custom
+    integration static path such as ``/axis_pacs/frontend`` is NOT SW-cached, so
+    Safari over a Nabu Casa tunnel stalls the module request on page load: the
+    element never registers via ``customElements.define`` and the card shows a
+    permanent "Configuration error" until a full reload (Chrome tolerated it).
+    Serving from ``www`` (``/local/``, which IS SW-cached) loads reliably in
+    every browser — verified on SI2 (3/3 Safari + Chrome).
+
+    So we copy the bundled card into ``www/<domain>/`` on every setup — a HACS
+    update thus propagates automatically, no manual www management — and load it
+    from ``/local/``. Earlier ``/axis_pacs/`` approaches (the add_extra_js_url
+    race fix, the Lovelace-resource registration, and ``cache_headers=True``)
+    were red herrings; ``cache_headers=True`` was in fact harmful — its long
+    ``max-age`` let a stale/bad response stick in-cache. The SW-cache path is the
+    real fix. See CLAUDE.md.
     """
-    frontend_dir = Path(__file__).parent / FRONTEND_DIR
-    # cache_headers=True is REQUIRED, not cosmetic. With it False the card JS is
-    # served WITHOUT Cache-Control, and Safari over the Nabu Casa tunnel stalls /
-    # deprioritizes the non-cacheable module request on page load — the module
-    # never executes, the element never registers, and the card shows a permanent
-    # "Configuration error" until a full page reload. Every card that loads
-    # reliably (HACS /hacsfiles/*, browser_mod /browser_mod.js) is served WITH
-    # cache headers; this one was the lone exception. The ?v=<hash> query still
-    # busts the cache on updates, so True is safe. (Matches browser_mod.)
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_dir), True)]
-    )
-    # Cache-bust with a content hash so a card update is always a fresh URL for
-    # the BROWSER's HTTP cache. (HA's service worker does NOT cache this path, so
-    # this is not an SW concern.) The static handler ignores the query string and
-    # serves the current file; _async_register_card_resource rewrites the resource
-    # entry's ?v= to this hash on each setup.
-    version = await hass.async_add_executor_job(
-        _card_version, frontend_dir / FRONTEND_CARD_FILENAME
-    )
-    card_url = f"{FRONTEND_URL_BASE}/{FRONTEND_CARD_FILENAME}?v={version}"
+    src = Path(__file__).parent / FRONTEND_DIR / FRONTEND_CARD_FILENAME
+    dest_dir = Path(hass.config.path("www")) / DOMAIN
+    version = await hass.async_add_executor_job(_deploy_card, src, dest_dir)
+    base_url = f"/local/{DOMAIN}/{FRONTEND_CARD_FILENAME}"
+    card_url = f"{base_url}?v={version}"
+    # Load it two ways for robustness: add_extra_js_url (works on any lovelace
+    # mode) + an auto-managed Lovelace resource (reconciled below). Same URL, so
+    # the browser dedupes to a single module load.
     add_extra_js_url(hass, card_url)
-    # ...and ALSO register it as a Lovelace resource. add_extra_js_url alone is a
-    # fire-and-forget dynamic import() in the app shell that races the dashboard
-    # render, so on a cold load the card can paint "Configuration error" until a
-    # manual refresh. Lovelace resources are loaded by the panel BEFORE it builds
-    # cards, which is how every other custom card here loads reliably. Same URL as
-    # add_extra_js_url so the browser dedupes to a single module load. This is the
-    # full browser_mod pattern (which does both); we previously only did the first
-    # half. Best-effort — never fail setup over the resource.
-    await _async_register_card_resource(hass, card_url)
+    await _async_register_card_resource(hass, card_url, base_url)
 
 
-async def _async_register_card_resource(hass: HomeAssistant, card_url: str) -> None:
+def _deploy_card(src: Path, dest_dir: Path) -> str:
+    """Copy the card into ``www/<domain>/`` (idempotent) and return its content
+    hash for cache-busting. Runs in an executor — blocking file I/O."""
+    try:
+        data = src.read_bytes()
+    except OSError:
+        return "0"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    # Only rewrite when the bytes changed, to avoid needless disk/mtime churn.
+    if not dest.exists() or dest.read_bytes() != data:
+        dest.write_bytes(data)
+    return hashlib.md5(data, usedforsecurity=False).hexdigest()[:8]
+
+
+async def _async_register_card_resource(
+    hass: HomeAssistant, card_url: str, base_url: str
+) -> None:
     """Register (or update) the management card as a storage-mode Lovelace resource.
 
     Mirrors browser_mod's ``mod_view`` approach so it tracks HA's internal
@@ -133,7 +139,6 @@ async def _async_register_card_resource(hass: HomeAssistant, card_url: str) -> N
     duplicates. No-op in YAML lovelace mode (resources are user-managed there;
     ``add_extra_js_url`` still delivers the card).
     """
-    base_url = f"{FRONTEND_URL_BASE}/{FRONTEND_CARD_FILENAME}"
     try:
         lovelace = hass.data.get("lovelace")
         resources = getattr(lovelace, "resources", None) if lovelace else None
@@ -152,14 +157,6 @@ async def _async_register_card_resource(hass: HomeAssistant, card_url: str) -> N
         await resources.async_create_item({"res_type": "module", "url": card_url})
     except Exception:  # noqa: BLE001 — resource wiring must never break setup
         _LOGGER.debug("Could not register card as a Lovelace resource", exc_info=True)
-
-
-def _card_version(path: Path) -> str:
-    """Short content hash of the card file, for cache-busting its module URL."""
-    try:
-        return hashlib.md5(path.read_bytes(), usedforsecurity=False).hexdigest()[:8]
-    except OSError:
-        return "0"
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_TYPE_MANAGERS})
